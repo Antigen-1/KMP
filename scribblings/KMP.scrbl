@@ -3,8 +3,8 @@
                     racket/base]]
 
 @title{KMP}
-@author{}
+@author{Antigen-1}
 
 @defmodule[KMP]
 
-Package Description Here
+My KMP implementation.

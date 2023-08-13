@@ -1,3 +1,3 @@
 KMP
 ===
-README text here.
+My KMP implementation.
