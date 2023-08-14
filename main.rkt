@@ -28,10 +28,13 @@
 (require racket/contract racket/sequence racket/match)
 (provide (contract-out (make-KMP-matcher (-> sequence? (-> any/c any/c boolean?) (-> sequence? any)))))
 
+(define (generate-symbol s)
+  (string->symbol (symbol->string (gensym s))))
+
 (define (in-sequence-from seq start)
   (let ((index (box start))
         (len (sequence-length seq))
-        (Nil (string->symbol (symbol->string (gensym 'Nil)))))
+        (Nil (generate-symbol 'Nil)))
     (in-producer
      (lambda ()
        (define old-index (unbox index))
@@ -67,28 +70,35 @@
 (define (PMT-match table seq2)
   (match table
     ((PMT elements elem=? values-vector)
-     (let ((len (vector-length values-vector))
-           (edge (sequence-length seq2)))
-       (let loop ((i 0) (j 0))
-         (cond ((= j len) (- i j))
-               ((>= i edge) #f)
+     (let*-values (((len) (vector-length values-vector))
+                   ((more? get) (sequence-generate seq2))
+                   ((Nil) (generate-symbol 'Nil))
+                   ((state) (vector 0 0 Nil)))
+       (define-syntax-rule (define-state name location)
+         (define name (case-lambda (() (vector-ref state location))
+                                   ((v) (vector-set! state location v)))))
+       (define-state i 0)
+       (define-state j 1)
+       (define-state stage 2)
+       (let loop ()
+         (define old-i (i))
+         (define old-j (j))
+         (cond ((= old-j len) (cons (- old-i old-j) old-i))
+               ((not (more?)) #f)
                (else
-                (let/cc break
-                  (call-with-values
-                   (lambda ()
-                     (for/fold ((i i) (j j))
-                               ((e1 (in-sequence-from elements j))
-                                (e2 (in-sequence-from seq2 i)))
-                       (cond ((elem=? e1 e2) (values (add1 i) (add1 j)))
-                             ((zero? j) (break (loop (add1 i) 0))) ;; value = -1
-                             (else (break (loop i (vector-ref values-vector (sub1 j))))))))
-                   loop)))))))))
+                (define new (let ((v (stage))) (if (eq? v Nil) (get) v)))
+                (cond ((elem=? new (sequence-ref elements old-j))
+                       (i (add1 old-i)) (j (add1 old-j)) (stage Nil))
+                      ((zero? old-j)
+                       (i (add1 old-i)) (stage Nil))
+                      (else (j (vector-ref values-vector (sub1 old-j))) (stage new)))
+                (loop))))))))
 
 (module+ test
   (define table (make-PMT (in-string "abababca") char=?))
   (check-equal? (PMT-values-vector table) (vector 0 0 1 2 3 4 0 1))
   (check-exn exn:fail:contract? (lambda () (make-PMT (in-string "") char=?)))
-  (check-true (= 2 (PMT-match table (in-string "ababababca")))))
+  (check-equal? (cons 2 10) (PMT-match table (in-string "ababababca"))))
 
 (define (make-KMP-matcher seq elem=?)
   (define PMT (make-PMT seq elem=?))
@@ -97,7 +107,7 @@
 
 (module+ test
   (define hello-world-matcher (make-KMP-matcher "Hello, World!" char-ci=?))
-  (check-true (= (hello-world-matcher "Antigen-1: hello, world!") 11))
+  (check-equal? (hello-world-matcher "Antigen-1: hello, world!") (cons 11 24))
   (check-false (hello-world-matcher "Antigen-1: hello, world")))
 
 (module* contract-test racket/base
@@ -110,7 +120,7 @@
   (displayln "1. Compile:")
   (define matcher (time (make-KMP-matcher string1 char=?)))
   (displayln "2. Match:")
-  (check-true (= 3030 (time (matcher string2)))))
+  (check-equal? (cons 3030 4050) (time (matcher string2))))
 
 (module+ test
   (require (submod ".." contract-test)))
