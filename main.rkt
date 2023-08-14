@@ -121,7 +121,7 @@
   (displayln "1. Compile:")
   (define pattern (time (regexp string1)))
   (displayln "2. Match:")
-  (time (regexp-match-positions pattern string2))
+  (void (time (regexp-match-positions pattern string2)))
   (displayln "My KMP Implementation")
   (displayln "1. Compile:")
   (define matcher (time (make-KMP-matcher string1 char=?)))
