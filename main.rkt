@@ -25,7 +25,7 @@
 
 ;; Code here
 
-(require racket/contract racket/sequence racket/match)
+(require racket/contract racket/sequence racket/match (for-syntax racket/base racket/list))
 (provide (contract-out (make-KMP-matcher (-> sequence? (-> any/c any/c boolean?) (-> sequence? any)))))
 
 (define (generate-symbol s)
@@ -70,16 +70,20 @@
 (define (PMT-match table seq2)
   (match table
     ((PMT elements elem=? values-vector)
-     (let*-values (((len) (vector-length values-vector))
-                   ((more? get) (sequence-generate seq2))
-                   ((Nil) (generate-symbol 'Nil))
-                   ((state) (vector 0 0 Nil)))
-       (define-syntax-rule (define-state name location)
-         (define name (case-lambda (() (vector-ref state location))
-                                   ((v) (vector-set! state location v)))))
-       (define-state i 0)
-       (define-state j 1)
-       (define-state stage 2)
+     (let-values (((len) (vector-length values-vector))
+                  ((more? get) (sequence-generate seq2))
+                  ((Nil) (generate-symbol 'Nil)))
+       (define-syntax (define-states stx)
+         (syntax-case stx ()
+           ((_ (name init) ...)
+            (with-syntax (((index ...) (range 0 (length (syntax->list #'(name ...))))))
+              #'(define-values (name ...)
+                  (let ((vec (vector init ...)))
+                    (values
+                     (case-lambda (() (vector-ref vec index))
+                                  ((v) (vector-set! vec index v)))
+                     ...)))))))
+       (define-states (i 0) (j 0) (stage Nil))
        (let loop ()
          (define old-i (i))
          (define old-j (j))
